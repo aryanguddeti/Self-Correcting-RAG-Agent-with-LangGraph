@@ -1,0 +1,27 @@
+# Secrets
+.env
+.env.local
+
+# Virtual Environments
+.scrag/
+venv/
+ENV/
+env/
+
+# Python internal files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Local Vector DB data (bulky)
+rag-chroma/
+chroma_db/
+
+# System files
+.DS_Store
+
+# PyCharm / IDE files
+.idea/
+*.iml
+*.xml
