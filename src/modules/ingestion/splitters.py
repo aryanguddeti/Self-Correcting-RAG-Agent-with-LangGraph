@@ -58,12 +58,6 @@ class HybridTableAwareSplitter:
         return [self._parse_response_content(resp.content) for resp in responses]
 
     @staticmethod
-    def _extract_section_headers(text: str) -> str:
-        """Extracts the breadcrumb injected by HeaderPropagator, if present."""
-        match = re.search(r"\*\*\[Context: ([^\]]+)\]\*\*", text)
-        return match.group(1) if match else ""
-
-    @staticmethod
     def _has_code_block(text: str) -> bool:
         return bool(re.search(r"```", text))
 
@@ -104,7 +98,6 @@ class HybridTableAwareSplitter:
                                 metadata={
                                     **base_metadata,
                                     "has_table": False,
-                                    "section_headers": self._extract_section_headers(text_chunk),
                                     "has_code_block": self._has_code_block(text_chunk),
                                 }
                             )
@@ -126,7 +119,6 @@ class HybridTableAwareSplitter:
                         "has_table": True,
                         "table_columns": headers,
                         "is_table_summary": True,
-                        "section_headers": self._extract_section_headers(cleaned_markdown[max(0, table_matches[i].start()-500):table_matches[i].start()]),
                         "has_code_block": False,
                     }
                 )
@@ -149,7 +141,6 @@ class HybridTableAwareSplitter:
                             metadata={
                                 **base_metadata,
                                 "has_table": False,
-                                "section_headers": self._extract_section_headers(text_chunk),
                                 "has_code_block": self._has_code_block(text_chunk),
                             }
                         )
