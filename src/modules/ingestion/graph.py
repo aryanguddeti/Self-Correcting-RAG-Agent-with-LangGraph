@@ -76,18 +76,7 @@ def build_ingestion_graph() -> CompiledStateGraph:
 
 if __name__ == "__main__":
     initial_state = IngestionState(
-        input_dir=Path(settings.DATA_INGEST_PATH.resolve()),
-        file_paths=[],
-        loaded_docs=[],
-        chunks=[],
-        embedded_chunks=[],
-        failed_files=[],
-        file_retries={},
-        load_retries=0,
-        chunk_retries=0,
-        embed_retries=0,
-        index_retries=0,
-        status="INIT"
+        input_dir=Path(settings.DATA_INGEST_PATH.resolve())
     )
 
     graph = build_ingestion_graph()
