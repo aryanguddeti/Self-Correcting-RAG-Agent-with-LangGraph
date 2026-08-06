@@ -1,22 +1,22 @@
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List
 from pathlib import Path
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.shared.schema import ChunkMetadata
 
 
 class IngestionState(BaseModel):
     input_dir: Path
-    file_paths: List[Path]
-    loaded_docs: List[Dict[str, Any]]
-    chunks: List[ChunkMetadata]
-    embedded_chunks: List[ChunkMetadata]
-    failed_files: List[str]            # Files that failed permanently (exceeded MAX_RETRIES)
-    file_retries: Dict[str, int]       # Track retry count per file: {"doc1.pdf": 2}
-    load_retries: int
-    chunk_retries: int
-    embed_retries: int
-    index_retries: int
-    status: str
+    file_paths: List[Path] = Field(default_factory=list)
+    loaded_docs: List[Dict[str, Any]] = Field(default_factory=list)
+    chunks: List[ChunkMetadata] = Field(default_factory=list)
+    embedded_chunks: List[ChunkMetadata] = Field(default_factory=list)
+    failed_files: List[str] = Field(default_factory=list)
+    file_retries: Dict[str, int] = Field(default_factory=dict)
+    load_retries: int = 0
+    chunk_retries: int = 0
+    embed_retries: int = 0
+    index_retries: int = 0
+    status: str = "INIT"
 
 
