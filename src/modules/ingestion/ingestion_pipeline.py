@@ -96,7 +96,9 @@ def split_and_summarize_node(state: IngestionState) -> Dict[str, Any]:
         try:
             cleaned_markdown = preprocessor.clean_pdf_artifacts(doc["markdown_content"])
             enriched_markdown = propagator.propagate(cleaned_markdown)
-            doc_chunks = splitter.split_document(enriched_markdown, {"file_name": file_name})
+            doc_chunks = splitter.split_document(enriched_markdown, {
+                "file_name": file_name,
+            })
             all_chunks.extend(doc_chunks)
         except Exception as e:
             print(f"️ Skipping '{file_name}' due to chunking error: {e}")
