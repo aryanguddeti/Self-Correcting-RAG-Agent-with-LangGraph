@@ -78,7 +78,7 @@ class HybridTableAwareSplitter:
         table_summaries = self.summarize_tables_batch(raw_tables)
 
         last_idx = 0
-
+        chunk_number = 1
         # 2. Build narrative and table chunks sequentially
         for i, match in enumerate(table_matches):
             start_idx, end_idx = match.span()
@@ -91,7 +91,7 @@ class HybridTableAwareSplitter:
                     for text_chunk in text_chunks:
                         chunks.append(
                             ChunkMetadata(
-                                chunk_id=str(uuid.uuid4()),
+                                chunk_id=str(base_metadata["file_name"] + "::" + str(chunk_number)),
                                 chunk_type="text",
                                 content_to_embed=text_chunk,
                                 raw_payload=text_chunk,
@@ -102,6 +102,7 @@ class HybridTableAwareSplitter:
                                 }
                             )
                         )
+                        chunk_number += 1
 
             # Process table chunk using the pre-fetched summary at index i
             raw_table = raw_tables[i]
@@ -110,7 +111,7 @@ class HybridTableAwareSplitter:
 
             chunks.append(
                 ChunkMetadata(
-                    chunk_id=str(uuid.uuid4()),
+                    chunk_id=str(base_metadata["file_name"] + "::" + str(chunk_number)),
                     chunk_type="table summary",
                     content_to_embed=summary,
                     raw_payload=raw_table,
@@ -125,6 +126,7 @@ class HybridTableAwareSplitter:
             )
 
             last_idx = end_idx
+            chunk_number += 1
 
         # 3. Process remaining narrative text AFTER the last table
         if last_idx < len(cleaned_markdown):
@@ -134,7 +136,7 @@ class HybridTableAwareSplitter:
                 for text_chunk in text_chunks:
                     chunks.append(
                         ChunkMetadata(
-                            chunk_id=str(uuid.uuid4()),
+                            chunk_id=str(base_metadata["file_name"] + "::" + str(chunk_number)),
                             chunk_type="text",
                             content_to_embed=text_chunk,
                             raw_payload=text_chunk,
@@ -145,5 +147,6 @@ class HybridTableAwareSplitter:
                             }
                         )
                     )
+                    chunk_number += 1
 
         return chunks
