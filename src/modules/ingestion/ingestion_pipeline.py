@@ -166,21 +166,6 @@ def index_to_vectorstore_node(state: IngestionState) -> Dict[str, Any]:
     status = "INDEXED"
     try:
         Indexer().insert_vector_batch(state.embedded_chunks)
-
-        # Write back to ledger — group chunks by file to get chunk_count per file
-        ledger = LedgerManager()
-        file_chunk_counts: Dict[str, int] = {}
-        for chunk in state.embedded_chunks:
-            file_name = chunk.metadata.get("file_name")
-            if file_name:
-                file_chunk_counts[file_name] = file_chunk_counts.get(file_name, 0) + 1
-
-        for file_name, chunk_count in file_chunk_counts.items():
-            content_hash = state.file_hashes.get(file_name)
-            if content_hash:
-                ledger.upsert_file_record(file_name, content_hash, chunk_count, "indexed")
-                print(f" Ledger updated: '{file_name}' ({chunk_count} chunks)")
-
     except Exception as e:
         print(f" Critical Indexing Failure: {e}")
         status = "INDEXING_FAILED"
@@ -278,7 +263,7 @@ def grade_embedding_quality(state: IngestionState) -> Literal["index_to_vectorst
 
 
 def verify_index(state: IngestionState) -> Literal["end", "index_to_vectorstore", "failed_exit"]:
-    """Grader 4: Read-after-write verification against the vector database."""
+    """Grader 4: Read-after-write verification against Pinecone before writing to ledger."""
     print(" [Grader: verify_index] Executing read-after-write verification...")
 
     if not state.embedded_chunks:
@@ -292,6 +277,29 @@ def verify_index(state: IngestionState) -> Literal["end", "index_to_vectorstore"
         else:
             print(f" Indexing failed after {MAX_RETRIES} attempts. Giving up.")
             return "failed_exit"
+
+    chunk_ids = [chunk.chunk_id for chunk in state.embedded_chunks]
+    if not Indexer().verify_vectors(chunk_ids):
+        if state.index_retries < MAX_RETRIES:
+            print(" Pinecone verification failed. Retrying indexing...")
+            return "index_to_vectorstore"
+        else:
+            print(" Pinecone verification failed after max retries. Giving up.")
+            return "failed_exit"
+
+    # Vectors confirmed in Pinecone — now safe to write to ledger
+    ledger = LedgerManager()
+    file_chunk_counts: Dict[str, int] = {}
+    for chunk in state.embedded_chunks:
+        file_name = chunk.metadata.get("file_name")
+        if file_name:
+            file_chunk_counts[file_name] = file_chunk_counts.get(file_name, 0) + 1
+
+    for file_name, chunk_count in file_chunk_counts.items():
+        content_hash = state.file_hashes.get(file_name)
+        if content_hash:
+            ledger.upsert_file_record(file_name, content_hash, chunk_count, "indexed")
+            print(f" Ledger updated: '{file_name}' ({chunk_count} chunks)")
 
     print(" Vector store indexing complete.")
     return "end"
