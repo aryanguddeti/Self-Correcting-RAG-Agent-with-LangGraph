@@ -70,7 +70,13 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
 
     for name in ledger.get_all_file_names():
         f = input_path / name
-        if f.is_file() and compute_file_hash(f) == (ledger.get_file_record(name) or {}).get("content_hash"):
+        if not f.exists():
+            record = ledger.get_file_record(name)
+            if record:
+                print(f" Deleted file detected: '{name}'. Removing vectors and ledger record.")
+                Indexer().delete_by_id([f"{name}::{i}" for i in range(1, record["chunk_count"] + 1)])
+                ledger.delete_file_record(name)
+        elif compute_file_hash(f) == (ledger.get_file_record(name) or {}).get("content_hash"):
             existing_docs.setdefault(name, {"file_name": name, "markdown_content": ""})
 
     files_to_process = _classify_files(
@@ -106,7 +112,6 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
         "load_retries": state.load_retries + 1,
         "status": "DOCS_LOADED",
     }
-
 
 
 def split_and_summarize_node(state: IngestionState) -> Dict[str, Any]:
