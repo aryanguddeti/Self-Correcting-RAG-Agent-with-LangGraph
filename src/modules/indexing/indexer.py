@@ -53,10 +53,17 @@ class Indexer:
 
     def delete_by_id(self, vector_ids: List[str]) -> None:
         try:
-            self.index.delete(ids=vector_ids)
+            num_ids = len(vector_ids)
+            if num_ids < 1000:
+                self.index.delete(ids=vector_ids)
+            else:
+                for i in range(0, num_ids, 1000):
+                    batch = vector_ids[i:i + 1000]
+                    self.index.delete(ids=batch)
+
             print(f"Successfully deleted vectors with IDs: {vector_ids}")
         except Exception as e:
             print(f"Error deleting vectors from Pinecone: {e}")
-
+            raise
 
 
