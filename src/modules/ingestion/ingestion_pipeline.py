@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Literal
 
-from src.core.config import settings
 from src.modules.ingestion.state import IngestionState
 from src.modules.ingestion.loader import IngestionLoader
 from src.modules.ingestion.splitters import HybridTableAwareSplitter
@@ -8,6 +7,8 @@ from src.shared.schema import ChunkMetadata
 from src.modules.ingestion.preprocessor import DocumentPreprocessor, HeaderPropagator
 from src.modules.indexing.embedder import Embedder
 from src.modules.indexing.indexer import Indexer
+from src.infrastructure.ledger import LedgerManager
+from src.utils.file_utils import compute_file_hash
 
 MAX_RETRIES = 3
 
@@ -20,28 +21,49 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
     print("\n [Node: load_documents] Starting document ingestion...")
 
     loader = IngestionLoader()
+    ledger = LedgerManager()
     input_path = state.input_dir
 
-    file_retries = state.file_retries
+    file_retries = dict(state.file_retries)
+    file_hashes = dict(state.file_hashes)
     already_permanently_failed = set(state.failed_files)
     existing_docs = {doc["file_name"]: doc for doc in state.loaded_docs}
 
+    # Treat already-indexed files (from ledger) as already loaded so they are never retried
+    already_indexed = set(ledger.get_all_file_names())
+    for name in already_indexed:
+        if name not in existing_docs:
+            existing_docs[name] = {"file_name": name, "markdown_content": ""}
+
     valid_extensions = {".pdf", ".html", ".docx"}
 
-    # 1. Select files that:
-    #    - Have not succeeded yet
-    #    - Have not exceeded MAX_RETRIES
+    # 1. Classify every file on disk via ledger hash comparison
     files_to_process = []
     for f in input_path.iterdir():
-        if f.is_file() and f.suffix.lower() in valid_extensions:
-            file_name = f.name
-            # Skip if already successfully converted or permanently failed
-            if file_name in existing_docs or file_name in already_permanently_failed:
-                continue
+        if not (f.is_file() and f.suffix.lower() in valid_extensions):
+            continue
 
-            # Check per-file retry limit
-            if file_retries.get(file_name, 0) < MAX_RETRIES:
-                files_to_process.append(f)
+        file_name = f.name
+
+        if file_name in existing_docs or file_name in already_permanently_failed:
+            continue
+
+        current_hash = compute_file_hash(f)
+        record = ledger.get_file_record(file_name)
+
+        if record and record["content_hash"] == current_hash and record["status"] == "indexed":
+            print(f" Skipping unchanged file: '{file_name}'")
+            continue
+
+        if record and record["content_hash"] != current_hash:
+            print(f" Modified file detected: '{file_name}'. Clearing stale ledger record.")
+            vector_ids = [f.name + "::" + str(num) for num in range(1, record['chunk_count'] + 1)]
+            ledger.delete_file_record(file_name)
+            Indexer().delete_by_id(vector_ids)
+
+        if file_retries.get(file_name, 0) < MAX_RETRIES:
+            files_to_process.append(f)
+            file_hashes[file_name] = current_hash
 
     if not files_to_process:
         print("ℹ No pending files to load or retry.")
@@ -50,19 +72,19 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
             "status": "DOCS_LOADED_IDLE"
         }
 
-    # Increment retry counts for the files we are about to attempt
+    # 2. Increment retry counts before attempting
     for f in files_to_process:
         file_retries[f.name] = file_retries.get(f.name, 0) + 1
         print(f" Attempting load for '{f.name}' (Attempt {file_retries[f.name]}/{MAX_RETRIES})")
 
-    # 2. Execute document conversion batch
+    # 3. Execute document conversion batch
     newly_extracted_docs, newly_failed_files = loader.document_load(files_to_process)
 
-    # 3. Update loaded docs
+    # 4. Merge successfully loaded docs
     for doc in newly_extracted_docs:
         existing_docs[doc["file_name"]] = doc
 
-    # 4. Check if any failed files have now exhausted all retries
+    # 5. Mark files that exhausted retries as permanently failed
     newly_permanently_failed = []
     for file_name in newly_failed_files:
         if file_retries.get(file_name, 0) >= MAX_RETRIES:
@@ -75,6 +97,7 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
         "loaded_docs": list(existing_docs.values()),
         "failed_files": updated_failed_files,
         "file_retries": file_retries,
+        "file_hashes": file_hashes,
         "load_retries": state.load_retries + 1,
         "status": "DOCS_LOADED",
     }
@@ -133,6 +156,21 @@ def index_to_vectorstore_node(state: IngestionState) -> Dict[str, Any]:
     status = "INDEXED"
     try:
         Indexer().insert_vector_batch(state.embedded_chunks)
+
+        # Write back to ledger — group chunks by file to get chunk_count per file
+        ledger = LedgerManager()
+        file_chunk_counts: Dict[str, int] = {}
+        for chunk in state.embedded_chunks:
+            file_name = chunk.metadata.get("file_name")
+            if file_name:
+                file_chunk_counts[file_name] = file_chunk_counts.get(file_name, 0) + 1
+
+        for file_name, chunk_count in file_chunk_counts.items():
+            content_hash = state.file_hashes.get(file_name)
+            if content_hash:
+                ledger.upsert_file_record(file_name, content_hash, chunk_count, "indexed")
+                print(f" Ledger updated: '{file_name}' ({chunk_count} chunks)")
+
     except Exception as e:
         print(f" Critical Indexing Failure: {e}")
         status = "INDEXING_FAILED"
