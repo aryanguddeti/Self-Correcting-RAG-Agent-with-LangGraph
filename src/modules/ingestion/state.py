@@ -13,6 +13,7 @@ class IngestionState(BaseModel):
     embedded_chunks: List[ChunkMetadata] = Field(default_factory=list)
     failed_files: List[str] = Field(default_factory=list)
     file_retries: Dict[str, int] = Field(default_factory=dict)
+    file_hashes: Dict[str, str] = Field(default_factory=dict)
     load_retries: int = 0
     chunk_retries: int = 0
     embed_retries: int = 0
