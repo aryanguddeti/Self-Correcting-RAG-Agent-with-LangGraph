@@ -51,6 +51,21 @@ class Indexer:
             print(f"Error inserting chunks into Pinecone: {e}")
 
 
+    def verify_vectors(self, chunk_ids: List[str], sample_size: int = 50) -> bool:
+        """Spot-checks a sample of chunk IDs against Pinecone to confirm they were persisted."""
+        sample = chunk_ids[:sample_size]
+        try:
+            response = self.index.fetch(ids=sample)
+            found = len(response.vectors)
+            if found < len(sample):
+                print(f" Verification failed: expected {len(sample)} vectors, found {found} in Pinecone.")
+                return False
+            print(f" Verification passed: {found}/{len(sample)} sampled vectors confirmed in Pinecone.")
+            return True
+        except Exception as e:
+            print(f" Pinecone fetch verification failed: {e}")
+            return False
+
     def delete_by_id(self, vector_ids: List[str]) -> None:
         try:
             num_ids = len(vector_ids)
