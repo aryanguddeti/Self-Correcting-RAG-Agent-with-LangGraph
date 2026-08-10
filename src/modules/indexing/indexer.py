@@ -51,10 +51,12 @@ class Indexer:
             print(f"Error inserting chunks into Pinecone: {e}")
 
 
-
-
-
-
+    def delete_by_id(self, vector_ids: List[str]) -> None:
+        try:
+            self.index.delete(ids=vector_ids)
+            print(f"Successfully deleted vectors with IDs: {vector_ids}")
+        except Exception as e:
+            print(f"Error deleting vectors from Pinecone: {e}")
 
 
 
