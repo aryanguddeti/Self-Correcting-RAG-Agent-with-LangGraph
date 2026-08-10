@@ -69,7 +69,9 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
     existing_docs = {doc["file_name"]: doc for doc in state.loaded_docs}
 
     for name in ledger.get_all_file_names():
-        existing_docs.setdefault(name, {"file_name": name, "markdown_content": ""})
+        f = input_path / name
+        if f.is_file() and compute_file_hash(f) == (ledger.get_file_record(name) or {}).get("content_hash"):
+            existing_docs.setdefault(name, {"file_name": name, "markdown_content": ""})
 
     files_to_process = _classify_files(
         input_path, existing_docs, already_permanently_failed,
@@ -78,7 +80,7 @@ def load_documents_node(state: IngestionState) -> Dict[str, Any]:
 
     if not files_to_process:
         print("ℹ No pending files to load or retry.")
-        return {"loaded_docs": list(existing_docs.values()), "status": "DOCS_LOADED_IDLE"}
+        return {"loaded_docs": list(existing_docs.values()), "status": "END"}
 
     for f in files_to_process:
         file_retries[f.name] = file_retries.get(f.name, 0) + 1
@@ -192,6 +194,9 @@ def grade_load_quality(
 ) -> Literal["split_and_summarize", "load_documents", "skip_and_proceed"]:
     """Grader 1: Evaluates if any files still need retrying before moving forward."""
     print(" [Grader: grade_load_quality] Checking load quality...")
+
+    if state.status == "END":
+        return "skip_and_proceed"
 
     input_path = state.input_dir
     file_retries = state.file_retries
