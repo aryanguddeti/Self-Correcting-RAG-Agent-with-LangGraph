@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     DATA_INGEST_PATH: Path = ROOT_DIR/'data'
     GOOGLE_API_KEY: str
     PINECONE_API_KEY: str
+    MONGODB_URI: str
+    PINECONE_INDEX_NAME: str = "self-correcting-rag"
+
 
 settings = Settings()
 
